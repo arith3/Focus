@@ -1,12 +1,14 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h> // 텍스트 LCD & IIC I2C 모듈을 사용하기 위한 헤더파일
-#define IWS_HEAT 0             //pin 2
-#define IWS_HUMI 1             //pin 3
-#define IWS_AIR 4              //pin 19
-#define IWS_ALL 5              //pin 18
-#define UMP1 14
-#define UMP2 15
-#define UMP3 16
+//#define IWS_HEAT 0             //pin 2
+//#define IWS_HUMI 1             //pin 3
+//#define IWS_AIR 4              //pin 19
+//#define IWS_ALL 5              //pin 18
+#define UMP1 14 //bit 1
+#define UMP2 15 //bit 2
+#define UMP3 16 //bit 3
+#define UMP4 17 //bit 4
+#define UMP5 18 //bit 5
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // 가로 16, 세로 2 LCD에 대한 0x3F LCD 주소를 설정
 char HUMI_Sensor = A0;
@@ -16,9 +18,12 @@ float ugm3 = 0;
 byte dht11_dat[5];
 byte dht11_in; // 센서 변수
 byte i;
+String sending = "";     //온습도먼지 값을 보내려는 스트링
+String iot_stat = ""; //기기가 꺼진지 켜진지 보는 스트링
+char outstr[6];
 
-const byte Relaypin1 = 5; //heater1
-const byte Relaypin2 = 6; //heater2
+const byte Relaypin1 = 5; //heater1, 2
+const byte Relaypin2 = 6; //cooler
 const byte Relaypin3 = 7; //air clean
 const byte Relaypin4 = 8; //humi
 const byte Dustpin = 9;
@@ -54,6 +59,10 @@ void setup() // 초기화
     pinMode(UMP1, INPUT_PULLUP);
     pinMode(UMP2, INPUT_PULLUP);
     pinMode(UMP3, INPUT_PULLUP);
+    pinMode(UMP4, INPUT_PULLUP);
+    pinMode(UMP5, INPUT_PULLUP);
+
+    Serial.begin(115200);
     /*
     pinMode(2, INPUT_PULLUP);
     pinMode(3, INPUT_PULLUP);
@@ -95,6 +104,7 @@ void loop() // 무한루프
     lcd.print('C');               // LCD에 C 출력
     //delay(2000);                  // 2초간 지연
     delay(1000);
+    /*
     if (digitalRead(UMP1) == LOW && digitalRead(UMP2) == LOW && digitalRead(UMP3) == LOW)
     {
         device_control(dht11_dat[2], dht11_dat[0], ugm3); //normal status
@@ -115,6 +125,73 @@ void loop() // 무한루프
     {
         device_control(0, 0, 123.45); //all on
     }
+    */
+    zzisu_dduckbaegi();
+    if (digitalRead(UMP1) == HIGH)
+    {
+        device_control(dht11_dat[2], dht11_dat[0], ugm3); //auto mode!
+        iot_stat.concat("1aaaa");
+    }
+    else
+    {
+        iot_stat.concat("0");
+        if (digitalRead(UMP2) == HIGH)
+        {
+            in_heat_on();
+            iot_stat.concat("1");
+        }
+        else
+        {
+            in_heat_off();
+            iot_stat.concat("0");
+        }
+
+        if (digitalRead(UMP3) == HIGH)
+        {
+            in_humi_on();
+            iot_stat.concat("1");
+        }
+        else
+        {
+            in_humi_off();
+            iot_stat.concat("0");
+        }
+
+        if (digitalRead(UMP4) == HIGH)
+        {
+            in_air_on();
+            iot_stat.concat("1");
+        }
+        else
+        {
+            in_air_off();
+            iot_stat.concat("0");
+        }
+
+        if (digitalRead(UMP5) == HIGH)
+        {
+            in_cool_on();
+            iot_stat.concat("1");
+        }
+        else
+        {
+            in_cool_off();
+            iot_stat.concat("0");
+        }
+    }
+    // SERIAL connection
+    sending.concat(String((int)dht11_dat[2])); //temp
+    sending.concat("?");
+    sending.concat(String((int)dht11_dat[0])); //humi
+    sending.concat("?");
+    //sending.concat(String(ugm3)); //dust
+    dtostrf(ugm3, 6, 2, outstr);
+    sending.concat(outstr);
+    sending.concat("?");
+    sending.concat(iot_stat);
+    sending.concat("!");
+    Serial.println(sending);
+
     delay(1000);
 }
 
@@ -128,15 +205,27 @@ void lcd_set()
     lcd.print("HUMI:   TEMP:"); // LCD에 TEMP: 출력
 }
 
+void zzisu_dduckbaegi()
+{
+    sending = "";
+    //outstr = "";
+    iot_stat = "";
+}
+
 void device_control(byte temp, byte humi, float ddd)
 {
     if (temp < 22)
     {
         in_heat_on();
     }
+    else if (temp > 28)
+    {
+        in_cool_on();
+    }
     else
     {
         in_heat_off();
+        in_cool_off();
     }
 
     if (humi < 45)
@@ -197,6 +286,15 @@ void in_air_on()
 void in_air_off()
 {
     RelayOn(Relaypin3);
+}
+
+void in_cool_on()
+{
+    RelayOn(Relaypin2);
+}
+void in_cool_off()
+{
+    RelayOff(Relaypin2);
 }
 
 float pulse2ugm3(unsigned long pulse)
